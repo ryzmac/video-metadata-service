@@ -11,17 +11,17 @@ import (
     "github.com/gorilla/mux"
 )
 
-// Video struct (unchanged)
+// Video represents the metadata structure
 type Video struct {
     ID          string `json:"id"`
     Title       string `json:"title"`
     Description string `json:"description"`
-    Duration    int    `json:"duration"`
+    Duration    int    `json:"duration"` // in seconds
     UploadDate  string `json:"uploadDate"`
 }
 
-// In-memory store (unchanged)
-var videos []Video
+// In-memory store (we’ll swap this for a database later if you want)
+var videos = []Video{}  // Changed from var videos []Video
 
 // Secret key for signing JWTs (in production, use an env variable)
 var jwtKey = []byte("my_secret_key")
@@ -35,15 +35,28 @@ type Claims struct {
 func main() {
     router := mux.NewRouter()
 
-    // Public endpoint
+    // Define routes
     router.HandleFunc("/login", login).Methods("POST")
-
-    // Protected endpoints with auth middleware
     router.HandleFunc("/videos", getVideos).Methods("GET").Handler(authMiddleware(http.HandlerFunc(getVideos)))
     router.HandleFunc("/videos", createVideo).Methods("POST").Handler(authMiddleware(http.HandlerFunc(createVideo)))
 
+    // Apply CORS middleware to all routes
+    corsHandler := func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
+            w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            if r.Method == "OPTIONS" {
+                w.WriteHeader(http.StatusOK)
+                return
+            }
+            next.ServeHTTP(w, r)
+        })
+    }
+
+    // Start server with CORS-wrapped router
     log.Println("Server starting on :8080...")
-    log.Fatal(http.ListenAndServe(":8080", router))
+    log.Fatal(http.ListenAndServe(":8080", corsHandler(router)))
 }
 
 // Login handler to issue a JWT
@@ -107,12 +120,13 @@ func authMiddleware(next http.Handler) http.Handler {
     })
 }
 
-// Handlers (unchanged from Step 2)
+// Handler to return all videos
 func getVideos(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(videos)
 }
 
+// Handler to create a new video
 func createVideo(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     var video Video
